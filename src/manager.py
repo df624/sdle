@@ -31,19 +31,21 @@ class ShoppingListManager:
 
     def create_list(self, name, creator):
         """Create a new shopping list."""
-        url = str(uuid.uuid4())
+        url = str(uuid.uuid4())  # Generate a unique URL
         self.db.execute("INSERT INTO list (url, name, creator) VALUES (?, ?, ?)", (url, name, creator))
         self.db.commit()
-        print(f"List '{name}' created successfully! URL: {url}")
+        return {"url": url, "name": name, "creator": creator}  # Return the created list details
 
     def view_all_lists(self):
         """View all active shopping lists."""
         cursor = self.db.execute("SELECT url, name, creator FROM list WHERE active = 1")
         lists = cursor.fetchall()
-        if not lists:
-            print("No active lists found.")
-        for lst in lists:
-            print(f"URL: {lst[0]}, Name: {lst[1]}, Creator: {lst[2]}")
+        
+        # Return the list of dictionaries
+        result = [{"url": lst[0], "name": lst[1], "creator": lst[2]} for lst in lists]
+        
+        return result
+
 
     def add_item(self, list_url, name, current_quantity, total_quantity):
         """Add an item to an existing shopping list."""
@@ -115,4 +117,4 @@ class ShoppingListManager:
         # Marks all items in the list as deleted
         self.db.execute("UPDATE item SET deleted = 1 WHERE list_url = ?", (list_url,))
         self.db.commit()
-        print(f"List '{list_url}' and its items have been deleted.")
+        return {"url": list_url}

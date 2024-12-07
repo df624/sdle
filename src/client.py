@@ -1,58 +1,63 @@
-from manager import ShoppingListManager
+import zmq
+import json
 
 def main():
-    client_id = input("Enter your client ID: ")
-    db_path = f"local_{client_id}.db"
-    
-    manager = ShoppingListManager(db_path)
-    
+    context = zmq.Context()
+
+    # connection between client and broker
+    client = context.socket(zmq.REQ)
+    client.connect("tcp://localhost:5555")
+
     while True:
-        print("\n--- Shopping List Manager ---")
-        print("1. Create a new shopping list")
-        print("2. View all shopping lists")
-        print("3. Add an item to a list")
-        print("4. View items in a list")
-        print("5. Update an item in a list")
-        print("6. Delete a shopping list")
-        print("7. Exit")
+        print("\n--- Shopping List Client ---")
+        print("1. View all shopping lists")
+        print("2. Create a new shopping list")
+        print("8. Delete a list")
+        print("9. Exit")
 
         choice = input("Choose an option: ")
-        try:
-            if choice == "1":
-                name = input("Enter the list name: ")
-                creator = input("Enter your name: ")
-                manager.create_list(name, creator)
-            elif choice == "2":
-                manager.view_all_lists()
-            elif choice == "3":
-                list_url = input("Enter list URL: ")
-                item_name = input("Enter item name: ")
-                total_quantity = int(input("Enter total quantity: "))
-                manager.add_item(list_url, item_name, 0, total_quantity)
-            elif choice == "4":
-                list_url = input("Enter list URL: ")
-                manager.view_items_in_list(list_url)
-            elif choice == "5":
-                list_url = input("Enter list URL: ")
-                item_name = input("Enter item name: ")
-                current_quantity = input("Enter current quantity (leave blank to skip): ")
-                total_quantity = input("Enter total quantity (leave blank to skip): ")
+        if choice == "1":
+            request = {"action": "view_all_lists"}
 
-                # Converts inputs if provided
-                current_quantity = int(current_quantity) if current_quantity else None
-                total_quantity = int(total_quantity) if total_quantity else None
+        elif choice == "2":
+            name = input("Enter the name of the new list: ")
+            creator = input("Enter the creator's name: ")
+            request = {"action": "create_list", "name": name, "creator": creator}
 
-                manager.update_item(list_url, item_name, current_quantity, total_quantity)
-            elif choice == "6":
-                list_url = input("Enter list URL: ")
-                manager.delete_list(list_url)
-            elif choice == "7":
-                print("Exiting...")
-                break
-            else:
-                print("Invalid choice. Please try again.")
-        except Exception as e:
-            print(f"Error: {e}")
+        elif choice == "8":
+            list_url = input("Enter the URL of the list to delete: ")
+            request = {"action": "delete_list", "list_url": list_url}
+
+        elif choice == "9":
+            print("Exiting...")
+            break
+        else:
+            print("Invalid choice. Try again.")
+            continue
+
+        # Send the request to the broker
+        print("\nClient sending request:", request)
+        client.send_json(request)
+
+        # Wait for the response
+        response = client.recv_json()
+        
+        if response.get("status") == "success":
+            if choice == "1" and "lists" in response:
+                print("\nActive shopping lists:")
+                for lst in response["lists"]:
+                    print(f"- URL: {lst['url']}\n  Name: {lst['name']}\n  Creator: {lst['creator']}\n")
+            elif choice == "2" and "list" in response:
+                new_list = response["list"]
+                print(f"\nNew list created successfully!")
+                print(f"URL: {new_list['url']}, Name: {new_list['name']}, Creator: {new_list['creator']}\n")
+            elif choice == "8":
+                deleted_list = response["list"]
+                print(f"\nList deleted successfully!")
+                print(f"URL: {deleted_list['url']}\n")
+        else:
+            print(f"\nError: {response.get('message')}\n")
+
 
 if __name__ == "__main__":
     main()
