@@ -15,94 +15,91 @@ class ShoppingListManager:
                 creator TEXT,
                 active BOOLEAN DEFAULT TRUE
             )
-        """)#version INTEGER DEFAULT 0, last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP, is_synced BOOLEAN DEFAULT 0   
+        """)
         self.db.execute("""
             CREATE TABLE IF NOT EXISTS item (
                 name TEXT NOT NULL,
                 list_url TEXT NOT NULL,
-                current_quantity INTEGER DEFAULT 0,
-                total_quantity INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+                bought BOOLEAN DEFAULT FALSE,
                 deleted BOOLEAN DEFAULT FALSE,
                 PRIMARY KEY (name, list_url),
                 FOREIGN KEY (list_url) REFERENCES list (url)
             )
-        """) #version INTEGER DEFAULT 0, last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP, is_synced BOOLEAN DEFAULT 0
+        """)
         self.db.commit()
 
     def create_list(self, name, creator):
         """Create a new shopping list."""
-        url = str(uuid.uuid4())  # Generate a unique URL
+        url = str(uuid.uuid4()) 
         self.db.execute("INSERT INTO list (url, name, creator) VALUES (?, ?, ?)", (url, name, creator))
         self.db.commit()
-        return {"url": url, "name": name, "creator": creator}  # Return the created list details
+        return {"url": url, "name": name, "creator": creator}
 
     def view_all_lists(self):
         """View all active shopping lists."""
         cursor = self.db.execute("SELECT url, name, creator FROM list WHERE active = 1")
         lists = cursor.fetchall()
         
-        # Return the list of dictionaries
         result = [{"url": lst[0], "name": lst[1], "creator": lst[2]} for lst in lists]
         
         return result
 
 
-    def add_item(self, list_url, name, current_quantity, total_quantity):
+    def add_item(self, list_url, name, quantity):
         """Add an item to an existing shopping list."""
-        
-
         cursor = self.db.execute("SELECT COUNT(*) FROM list WHERE url = ?", (list_url,))
         if cursor.fetchone()[0] == 0:
             raise ValueError(f"No list found with URL: {list_url}")
 
-
         self.db.execute("""
-            INSERT INTO item (name, list_url, current_quantity, total_quantity) 
-            VALUES (?, ?, ?, ?)
-        """, (name, list_url, current_quantity, total_quantity))
+            INSERT INTO item (name, list_url, quantity) 
+            VALUES (?, ?, ?)
+        """, (name, list_url, quantity))
         self.db.commit()
         print(f"Item '{name}' added successfully to list '{list_url}'!")
+
 
     def view_items_in_list(self, list_url):
         """View items in a specific list."""
         cursor = self.db.execute("""
-            SELECT name, current_quantity, total_quantity 
+            SELECT name, quantity, bought 
             FROM item WHERE list_url = ? AND deleted = 0
         """, (list_url,))
         items = cursor.fetchall()
         if not items:
             print("No items found in this list.")
         for item in items:
-            print(f"Item: {item[0]}, Current Quantity: {item[1]}, Total Quantity: {item[2]}")
+            status = "Bought" if item[2] else "Not Bought"
+            print(f"Item: {item[0]}, Quantity: {item[1]}, Status: {status}")
 
-    def update_item(self, list_url, name, current_quantity=None, total_quantity=None):
-            """Update an existing item in a shopping list."""
-            # Validates that the item exists
-            cursor = self.db.execute("""
-                SELECT COUNT(*) FROM item WHERE list_url = ? AND name = ? AND deleted = 0
-            """, (list_url, name))
-            if cursor.fetchone()[0] == 0:
-                raise ValueError(f"No active item '{name}' found in list '{list_url}'")
 
-            # Updates the item
-            updates = []
-            params = []
-            if current_quantity is not None:
-                updates.append("current_quantity = ?")
-                params.append(current_quantity)
-            if total_quantity is not None:
-                updates.append("total_quantity = ?")
-                params.append(total_quantity)
+    def update_item(self, list_url, name, quantity=None, bought=None):
+        """Update an existing item in a shopping list."""
+        cursor = self.db.execute("""
+            SELECT COUNT(*) FROM item WHERE list_url = ? AND name = ? AND deleted = 0
+        """, (list_url, name))
+        if cursor.fetchone()[0] == 0:
+            raise ValueError(f"No active item '{name}' found in list '{list_url}'")
 
-            if updates:
-                params.append(list_url)
-                params.append(name)
-                update_query = f"UPDATE item SET {', '.join(updates)} WHERE list_url = ? AND name = ?"
-                self.db.execute(update_query, params)
-                self.db.commit()
-                print(f"Item '{name}' updated successfully in list '{list_url}'!")
-            else:
-                print("No updates were provided.")
+        updates = []
+        params = []
+        if quantity is not None:
+            updates.append("quantity = ?")
+            params.append(quantity)
+        if bought is not None:
+            updates.append("bought = ?")
+            params.append(bought)
+
+        if updates:
+            params.append(list_url)
+            params.append(name)
+            update_query = f"UPDATE item SET {', '.join(updates)} WHERE list_url = ? AND name = ?"
+            self.db.execute(update_query, params)
+            self.db.commit()
+            print(f"Item '{name}' updated successfully in list '{list_url}'!")
+        else:
+            print("No updates were provided.")
 
     def delete_list(self, list_url):
         """Delete a shopping list and its items."""
