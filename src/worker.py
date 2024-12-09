@@ -1,96 +1,80 @@
 import zmq
-import time
-import os
+import json
 from manager import ShoppingListManager
 
-def main(port):
+def main(worker_id):
     context = zmq.Context()
 
-    # Dynamically create the database path based on the worker's port
-    database_path = f"worker_{port}.db"
+    # Connect to the ROUTER socket on the proxy
+    worker = context.socket(zmq.DEALER)
+    worker.identity = f"worker{worker_id}".encode()
+    worker.connect("tcp://localhost:5556")
 
-    # Initialize the database if it does not exist
-    if not os.path.exists(database_path):
-        print(f"Initializing database for worker on port {port}...")
-        manager = ShoppingListManager(database_path)
-        del manager  
+    # Initialize the shopping list manager with a local database
+    db_path = f"local_{worker_id}.db"
+    print(f"Worker {worker_id} is using database: {db_path}")
+    manager = ShoppingListManager(db_path)
 
-    # Create the shopping list manager for handling requests
-    manager = ShoppingListManager(database_path)
-
-    # REP socket for the worker
-    worker = context.socket(zmq.REP)
-    worker.connect("tcp://localhost:5556")  
-
-    print(f"Worker running on port {port} with database {database_path}...")
+    print(f"Worker {worker_id} is ready and waiting for tasks...")
 
     while True:
+        # Receive message from the proxy
+        message = worker.recv_multipart()
+        print(f"Worker {worker_id} raw message: {message}")
+
         try:
-            # Receive request from the proxy
-            request = worker.recv_json()
-            print(f"Worker received request: {request}")
+            # Ensure the message contains exactly 3 parts
+            if len(message) != 2:
+                raise ValueError(f"Expected 2 parts in message, got {len(message)}")
 
-            time.sleep(1)
+            client_id, request_raw = message
+            request = json.loads(request_raw.decode())  # Decode the JSON payload
+            print(f"Worker {worker_id} received request: {request}")
 
-            # Handle the request
-            action = request.get("action")
-            if action == "view_all_lists":
-                try:
-                    lists = manager.view_all_lists()
-                    response = {
-                        "status": "success",
-                        "message": "Lists retrieved successfully.",
-                        "lists": lists
-                    }
-                except Exception as e:
-                    response = {
-                        "status": "error",
-                        "message": f"Failed to retrieve lists: {str(e)}"
-                    }
-            elif action == "create_list":
-                try:
-                    name = request.get("name")
-                    creator = request.get("creator")
-                    new_list = manager.create_list(name, creator)
-                    response = {
-                        "status": "success",
-                        "message": f"List '{name}' created successfully.",
-                        "list": new_list
-                    }
-                except Exception as e:
-                    response = {
-                        "status": "error",
-                        "message": f"Failed to create list: {str(e)}"
-                    }
-            elif action == "delete_list":
-                try:
-                    list_url = request.get("list_url")
-                    deleted_list = manager.delete_list(list_url)
-                    response = {
-                        "status": "success",
-                        "message": f"List '{deleted_list['url']}' deleted successfully.",
-                        "list": deleted_list
-                    }
-                except Exception as e:
-                    response = {
-                        "status": "error",
-                        "message": f"Failed to delete list: {str(e)}"
-                    }
+        except ValueError as e:
+            print(f"Worker {worker_id} failed to decode message: {e}")
+            # Respond with an error to the client
+            if len(message) > 1:
+                client_id = message[1]
             else:
-                response = {"status": "error", "message": "Unknown action."}
+                client_id = b"unknown_client"
+            response = {"status": "error", "message": str(e)}
+            worker.send_multipart([client_id, json.dumps(response).encode()])
+            continue
 
-            # Send response back to the proxy
-            worker.send_json(response)
-            print(f"Worker sent response: {response}")
-        except KeyboardInterrupt:
-            print(f"Worker on port {port} shutting down...")
-            break
+
+        # Process the request
+        print("request is", request)
+        action = request.get("action")
+        print("action is", action)
+
+        response = {}
+        if action == "view_all_lists":
+            try:
+                lists = manager.view_all_lists()
+                response = {"status": "success", "lists": lists}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+        elif action == "create_list":
+            name = request.get("name")
+            creator = request.get("creator")
+            try:
+                new_list = manager.create_list(name, creator)
+                response = {"status": "success", "list": new_list}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+        else:
+            response = {"status": "error", "message": "Unknown action."}
+
+        # Send response back to the client via proxy
+        worker.send_multipart([client_id, json.dumps(response).encode()])
+        print(f"Worker {worker_id} sent response: {response} to client {client_id}")
+        print([client_id, json.dumps(response).encode()]) 
+
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) != 2:
-        print("Usage: python worker.py <port>")
+    if len(sys.argv) < 2:
+        print("Usage: python worker.py <worker_id>")
         sys.exit(1)
-
-    port = sys.argv[1]
-    main(port)
+    main(worker_id=sys.argv[1])

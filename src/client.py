@@ -1,11 +1,14 @@
 import zmq
 import json
+import random
 
 def main():
     context = zmq.Context()
 
-    # connection between client and broker
-    client = context.socket(zmq.REQ)
+    # Set a unique identity for each client
+    client = context.socket(zmq.DEALER)
+    client.identity = f"client_{random.randint(1000, 9999)}".encode()
+    print(f"Client identity: {client.identity.decode()}")
     client.connect("tcp://localhost:5555")
 
     while True:
@@ -36,17 +39,46 @@ def main():
             continue
 
         # Send the request to the broker
+        print("request is", request)
+        print("request encoded is", json.dumps(request).encode())
         print("\nClient sending request:", request)
-        client.send_json(request)
+        client.send_multipart([client.identity, json.dumps(request).encode()])
+        print("Client sent request:", json.dumps(request).encode())
+        print(client.identity)
 
-        # Wait for the response
-        response = client.recv_json()
+        client.setsockopt(zmq.RCVTIMEO, 10000)  # Timeout after 5 seconds
         
-        if response.get("status") == "success":
+        try:
+            print("\nClient waiting for response...")
+            response_parts = client.recv_multipart()  # Receive multipart message
+
+            # Assuming the response is a list where the first part contains the JSON response
+            if response_parts:
+                response_raw = response_parts[0]  # Extract the first part
+                response = json.loads(response_raw.decode())  # Decode and parse JSON
+
+                print("\nClient received response:", response)
+            else:
+                print("\nClient received an empty response.")
+        except zmq.Again:
+            print("\nClient timed out waiting for response.")
+            continue  # Skip further processing if no response
+        except Exception as e:
+            print(response)
+            #print(json.loads(client_msg.decode()))
+            print(f"Error receiving response: {e}")
+            continue  # Skip further processing if there's an error
+
+        status = response.get("status")
+        print("status is", status)
+        if status == "success":
             if choice == "1" and "lists" in response:
-                print("\nActive shopping lists:")
-                for lst in response["lists"]:
-                    print(f"- URL: {lst['url']}\n  Name: {lst['name']}\n  Creator: {lst['creator']}\n")
+                if response["lists"]:
+                    print("\nActive shopping lists:")
+                    for lst in response["lists"]:
+                        print(f"- URL: {lst['url']}\n  Name: {lst['name']}\n  Creator: {lst['creator']}\n")
+                else:
+                    print("\nThere are no lists to show.\n")
             elif choice == "2" and "list" in response:
                 new_list = response["list"]
                 print(f"\nNew list created successfully!")
@@ -57,7 +89,6 @@ def main():
                 print(f"URL: {deleted_list['url']}\n")
         else:
             print(f"\nError: {response.get('message')}\n")
-
 
 if __name__ == "__main__":
     main()

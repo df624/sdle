@@ -1,69 +1,78 @@
 import zmq
-from dynamic_hash_ring import DynamicHashRing
+from hashring import HashRing
+import json
+import random
 
 def main():
     context = zmq.Context()
 
-    try:
-        # ROUTER socket to accept client connections
-        frontend = context.socket(zmq.ROUTER)
-        frontend.bind("tcp://*:5555")  # Proxy listens for client requests
-        print("Frontend (ROUTER) bound to tcp://*:5555")
+    # Create ROUTER socket to accept client connections
+    frontend = context.socket(zmq.ROUTER)
+    frontend.bind("tcp://*:5555")
 
-        # DEALER socket to communicate with workers
-        backend = context.socket(zmq.DEALER)
-        backend.bind("tcp://*:5556")  # Proxy communicates with workers
-        print("Backend (DEALER) bound to tcp://*:5556")
+    # Create ROUTER socket for workers
+    backend = context.socket(zmq.ROUTER)
+    backend.bind("tcp://*:5556")
 
-        # Initialize a dynamic hash ring for worker management
-        hash_ring = DynamicHashRing()
+    # Worker identities for hash ring
+    worker_addresses = [f"worker{i}".encode() for i in range(1, 6)]
+    ring = HashRing(nodes=worker_addresses, replicas=10)
 
-        # Define workers and add them to the hash ring
-        workers = [
-            "tcp://localhost:5561",
-            "tcp://localhost:5562",
-            "tcp://localhost:5563",
-            "tcp://localhost:5564",
-            "tcp://localhost:5565",
-        ]
-        for worker in workers:
-            hash_ring.add_worker(worker)
+    
 
-        print("Proxy running with dynamic consistent hashing and replication...")
 
-        while True:
-            # Receive a message from the client
-            client_id, _, request = frontend.recv_multipart()
-            request_data = zmq.utils.jsonapi.loads(request)
+    print("Proxy is running...")
 
-            # Determine the primary worker and replicas based on the hash ring
-            data_key = str(request_data.get("data_id", client_id))  
-            assigned_workers = hash_ring.get_workers(data_key, num_replicas=3)  
+    poller = zmq.Poller()
+    poller.register(frontend, zmq.POLLIN)
+    poller.register(backend, zmq.POLLIN)
 
-            primary_worker = assigned_workers[0]
-            replica_workers = assigned_workers[1:]
+    while True:
+        sockets = dict(poller.poll())
 
-            print(f"Routing request with key {data_key} to primary: {primary_worker} and replicas: {replica_workers}")
+        # Handle messages from clients
+        if frontend in sockets:
+            client_msg = frontend.recv_multipart()
 
-            # Send request to the primary worker
-            backend.send_multipart([primary_worker.encode(), b"", request])
+            print(f"Proxy received message from client: {client_msg}")
 
-            # Forward the request to replicas 
-            for replica in replica_workers:
-                backend.send_multipart([replica.encode(), b"", request])
+            client_id = client_msg[0]  # Client identity
+            request = client_msg[2]  # The JSON request payload
 
-            # Receive the response from the primary worker
-            _, _, response = backend.recv_multipart()
+            # Debugging: Log the raw request
+            print(f"Raw request from client: {request}")
 
-            # Forward the response back to the client
-            frontend.send_multipart([client_id, b"", response])
+            try:
+                # Decode the request JSON
+                request_data = json.loads(request.decode())
+                print(f"Decoded request from client {client_id.decode()}: {request_data}")
+            except json.JSONDecodeError as e:
+                print(f"Error decoding request: {e}")
+                continue
 
-    except Exception as e:
-        print(f"Error occurred in proxy: {e}")
-    finally:
-        frontend.close()
-        backend.close()
-        context.term()
+            # Determine target worker using the hash ring
+            key = request_data.get("key", f"{client_id.decode()}_{random.randint(1, 10000)}")
+            target_worker = ring.get_node(key)
+
+            
+
+            # Forward the request to the worker
+            backend.send_multipart([target_worker, client_id, request])
+            print(f"Proxy sent message to worker: {[target_worker, client_id, request]}")
+
+
+
+        # Handle messages from workers
+        if backend in sockets:
+            worker_msg = backend.recv_multipart()
+            print(f"worker_msg: {worker_msg}")
+            worker_id, client_id, response = worker_msg
+            print(f"Proxy received message from worker: {response} to client {client_id.decode()}")
+
+            frontend.send_multipart([client_id, response])
+            print([client_id, response])
+            print(f"Proxy sent raw response to client {client_id.decode()}: {response}")
+            print(f"Proxy sent response to client {client_id.decode()}: {response.decode()}")
 
 if __name__ == "__main__":
     main()
