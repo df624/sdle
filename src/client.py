@@ -39,38 +39,38 @@ def main():
             continue
 
         # Send the request to the broker
-        print("request is", request)
-        print("request encoded is", json.dumps(request).encode())
+        #print("request is", request)
+        #print("request encoded is", json.dumps(request).encode())
         print("\nClient sending request:", request)
         client.send_multipart([client.identity, json.dumps(request).encode()])
-        print("Client sent request:", json.dumps(request).encode())
-        print(client.identity)
+        #print("Client sent request:", json.dumps(request).encode())
+        #print(client.identity)
 
-        client.setsockopt(zmq.RCVTIMEO, 10000)  # Timeout after 5 seconds
+        client.setsockopt(zmq.RCVTIMEO, 10000)  # Timeout after 10 seconds
         
         try:
             print("\nClient waiting for response...")
-            response_parts = client.recv_multipart()  # Receive multipart message
+            response_parts = client.recv_multipart()  
 
-            # Assuming the response is a list where the first part contains the JSON response
+            
             if response_parts:
-                response_raw = response_parts[0]  # Extract the first part
-                response = json.loads(response_raw.decode())  # Decode and parse JSON
+                response_raw = response_parts[0] 
+                response = json.loads(response_raw.decode())  
 
                 print("\nClient received response:", response)
             else:
                 print("\nClient received an empty response.")
         except zmq.Again:
             print("\nClient timed out waiting for response.")
-            continue  # Skip further processing if no response
+            continue  #
         except Exception as e:
             print(response)
             #print(json.loads(client_msg.decode()))
             print(f"Error receiving response: {e}")
-            continue  # Skip further processing if there's an error
+            continue 
 
         status = response.get("status")
-        print("status is", status)
+        #print("status is", status)
         if status == "success":
             if choice == "1" and "lists" in response:
                 if response["lists"]:

@@ -5,7 +5,7 @@ from manager import ShoppingListManager
 def main(worker_id):
     context = zmq.Context()
 
-    # Connect to the ROUTER socket on the proxy
+    # Connect worker on the proxy
     worker = context.socket(zmq.DEALER)
     worker.identity = f"worker{worker_id}".encode()
     worker.connect("tcp://localhost:5556")
@@ -20,7 +20,7 @@ def main(worker_id):
     while True:
         # Receive message from the proxy
         message = worker.recv_multipart()
-        print(f"Worker {worker_id} raw message: {message}")
+        #print(f"Worker {worker_id} raw message: {message}")
 
         try:
             # Ensure the message contains exactly 3 parts
@@ -44,9 +44,9 @@ def main(worker_id):
 
 
         # Process the request
-        print("request is", request)
+        #print("request is", request)
         action = request.get("action")
-        print("action is", action)
+        #print("action is", action)
 
         response = {}
         if action == "view_all_lists":
@@ -69,7 +69,7 @@ def main(worker_id):
         # Send response back to the client via proxy
         worker.send_multipart([client_id, json.dumps(response).encode()])
         print(f"Worker {worker_id} sent response: {response} to client {client_id}")
-        print([client_id, json.dumps(response).encode()]) 
+        #print([client_id, json.dumps(response).encode()]) 
 
 
 if __name__ == "__main__":

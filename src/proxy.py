@@ -18,9 +18,6 @@ def main():
     worker_addresses = [f"worker{i}".encode() for i in range(1, 6)]
     ring = HashRing(nodes=worker_addresses, replicas=10)
 
-    
-
-
     print("Proxy is running...")
 
     poller = zmq.Poller()
@@ -36,16 +33,15 @@ def main():
 
             print(f"Proxy received message from client: {client_msg}")
 
-            client_id = client_msg[0]  # Client identity
-            request = client_msg[2]  # The JSON request payload
+            client_id = client_msg[0] 
+            request = client_msg[2]  
 
-            # Debugging: Log the raw request
-            print(f"Raw request from client: {request}")
+            
+            #print(f"Raw request from client: {request}")
 
             try:
-                # Decode the request JSON
                 request_data = json.loads(request.decode())
-                print(f"Decoded request from client {client_id.decode()}: {request_data}")
+                #print(f"Decoded request from client {client_id.decode()}: {request_data}")
             except json.JSONDecodeError as e:
                 print(f"Error decoding request: {e}")
                 continue
@@ -54,24 +50,20 @@ def main():
             key = request_data.get("key", f"{client_id.decode()}_{random.randint(1, 10000)}")
             target_worker = ring.get_node(key)
 
-            
-
             # Forward the request to the worker
             backend.send_multipart([target_worker, client_id, request])
             print(f"Proxy sent message to worker: {[target_worker, client_id, request]}")
 
-
-
         # Handle messages from workers
         if backend in sockets:
             worker_msg = backend.recv_multipart()
-            print(f"worker_msg: {worker_msg}")
+            #print(f"worker_msg: {worker_msg}")
             worker_id, client_id, response = worker_msg
             print(f"Proxy received message from worker: {response} to client {client_id.decode()}")
 
             frontend.send_multipart([client_id, response])
-            print([client_id, response])
-            print(f"Proxy sent raw response to client {client_id.decode()}: {response}")
+            #print([client_id, response])
+            #print(f"Proxy sent raw response to client {client_id.decode()}: {response}")
             print(f"Proxy sent response to client {client_id.decode()}: {response.decode()}")
 
 if __name__ == "__main__":
