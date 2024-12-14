@@ -13,6 +13,7 @@ class ShoppingListManager:
                 url TEXT NOT NULL PRIMARY KEY,
                 name TEXT,
                 creator TEXT,
+                client_id TEXT NOT NULL,
                 active BOOLEAN DEFAULT TRUE
             )
         """)
@@ -61,17 +62,20 @@ class ShoppingListManager:
 
 
     def view_items_in_list(self, list_url):
-        """View items in a specific list."""
+        """View items in a specific list for a specific client."""
         cursor = self.db.execute("""
-            SELECT name, quantity, bought 
-            FROM item WHERE list_url = ? AND deleted = 0
-        """, (list_url,))
+            SELECT i.name, i.quantity, i.bought 
+            FROM item AS i
+            JOIN list AS l ON i.list_url = l.url
+            WHERE i.list_url = ? AND i.deleted = 0
+        """, (list_url))
         items = cursor.fetchall()
         if not items:
-            print("No items found in this list.")
-        for item in items:
-            status = "Bought" if item[2] else "Not Bought"
-            print(f"Item: {item[0]}, Quantity: {item[1]}, Status: {status}")
+            print(f"No items found in the list with URL '{list_url}'.")
+        else:
+            for item in items:
+                status = "Bought" if item[2] else "Not Bought"
+                print(f"Item: {item[0]}, Quantity: {item[1]}, Status: {status}")
 
 
     def update_item(self, list_url, name, quantity=None, bought=None):
@@ -115,3 +119,4 @@ class ShoppingListManager:
         self.db.execute("UPDATE item SET deleted = 1 WHERE list_url = ?", (list_url,))
         self.db.commit()
         return {"url": list_url}
+

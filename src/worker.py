@@ -1,6 +1,6 @@
 import zmq
 import json
-from manager import ShoppingListManager
+from manager_local import ShoppingListManagerLocal
 
 def main(worker_id):
     context = zmq.Context()
@@ -10,10 +10,12 @@ def main(worker_id):
     worker.identity = f"worker{worker_id}".encode()
     worker.connect("tcp://localhost:5556")
 
+    
+
     # Initialize the shopping list manager with a local database
     db_path = f"local_{worker_id}.db"
     print(f"Worker {worker_id} is using database: {db_path}")
-    manager = ShoppingListManager(db_path)
+    manager = ShoppingListManagerLocal(db_path)
 
     print(f"Worker {worker_id} is ready and waiting for tasks...")
 
@@ -55,19 +57,55 @@ def main(worker_id):
                 response = {"status": "success", "lists": lists}
             except Exception as e:
                 response = {"status": "error", "message": str(e)}
-        elif action == "create_list":
-            name = request.get("name")
-            creator = request.get("creator")
+        elif action == "sync_list":
             try:
-                new_list = manager.create_list(name, creator)
-                response = {"status": "success", "list": new_list}
+                # Get the list details from the request
+                list_details = request.get("list", {})
+                url = list_details.get("url")
+                name = list_details.get("name")
+                creator = list_details.get("creator")
+                manager.save_existing_list(url, name, creator)
+                response = {"status": "success", "message": "List synchronized successfully."}
             except Exception as e:
                 response = {"status": "error", "message": str(e)}
+
+        elif action == "delete_list":
+            list_url = request.get("list_url")
+            try:
+                deleted_list = manager.delete_list(list_url)
+                response = {"status": "success", "list": deleted_list}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+        
+        elif action == "view_items":
+            list_url = request.get("list_url")
+            try:
+                items = manager.view_items_in_list(list_url)
+                response = {"status": "success", "items": items}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+
+        elif action == "sync_item":
+            try:
+                # Get the item details from the request
+                item_details = request.get("item", {})
+                list_url = item_details.get("list_url")
+                name = item_details.get("name")
+                quantity = item_details.get("quantity")
+                print("\n", quantity, "\n" )
+
+                # Save the item in the server-side database
+                manager.save_existing_item(list_url, name, quantity)
+                response = {"status": "success", "message": "Item synchronized successfully."}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+
+
         else:
             response = {"status": "error", "message": "Unknown action."}
 
         # Send response back to the client via proxy
-        worker.send_multipart([client_id, json.dumps(response).encode()])
+        worker.send_multipart([client_id.encode() if isinstance(client_id, str) else client_id, json.dumps(response).encode()])
         print(f"Worker {worker_id} sent response: {response} to client {client_id}")
         #print([client_id, json.dumps(response).encode()]) 
 

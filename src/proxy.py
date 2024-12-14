@@ -47,7 +47,7 @@ def main():
                 continue
 
             # Determine target worker using the hash ring
-            key = request_data.get("key", f"{client_id.decode()}_{random.randint(1, 10000)}")
+            key = request_data.get("list_url", client_id.decode())
             target_worker = ring.get_node(key)
 
             # Forward the request to the worker
