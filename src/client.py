@@ -2,6 +2,8 @@ import zmq
 import json
 import os
 import hashlib
+import threading
+import time
 from manager import ShoppingListManager
 
 def main():
@@ -33,6 +35,9 @@ def main():
     print(f"Client identity: {client.identity.decode()}")
     client.connect("tcp://localhost:5555")
 
+    # Start polling in a separate thread
+    threading.Thread(target=polling_and_sync, args=(client, manager, client_id), daemon=True).start()
+
     while True:
         print("\n--- Shopping List Client ---")
         print("1. View local shopping lists")
@@ -42,7 +47,9 @@ def main():
         print("5. Add item to a shopping list (local and then synchronized in server-side)")
         print("6. View items in a local shopping list")
         print("7. View items in shopping lists synchronized in server")
-        print("8. Exit")
+        print("8. Create a new local shopping list")
+        print("9. Add item to a local shopping list")
+        print("10. Exit")
 
         choice = input("Choose an option: ")
         if choice == "1":
@@ -106,8 +113,9 @@ def main():
 
                 # Sync to server
                 request = {"action": "sync_list", "list": new_list, "client_id": client_id}
-                sync_with_server(client, request)
+                synchronization_response(client, request)
 
+                manager.list_is_sync(new_list["url"])
             except Exception as e:
                 print(f"Error creating list: {e}")
 
@@ -137,7 +145,9 @@ def main():
                         "quantity": quantity,
                     },
                 }
-                sync_with_server(client, request)
+                synchronization_response(client, request)
+
+                manager.item_is_sync(item_name, list_url)
             except Exception as e:
                 print(f"Error adding item: {e}")
 
@@ -183,8 +193,27 @@ def main():
                 print("\nFailed to retrieve items: Server timeout.")
             except Exception as e:
                 print(f"Error retrieving items from server: {e}")
-    
+
         elif choice == "8":
+            name = input("Enter the name of the new list: ")
+            creator = input("Enter the creator's name of the new list: ")
+            try:
+                new_list = manager.create_list(name, creator, client_id)
+                print(f"\nNew list created locally: {new_list}")
+            except Exception as e:
+                print(f"Error creating list: {e}")
+
+        elif choice == "9":
+            list_url = input("Enter the shopping list URL: ")
+            item_name = input("Enter item name: ")
+            quantity = int(input("Enter quantity: "))
+            try:
+                manager.add_item(list_url, item_name, quantity, client_id)
+                print(f"Item '{item_name}' added locally to your list '{list_url}'.")
+            except Exception as e:
+                print(f"Error adding item: {e}")
+
+        elif choice == "10":
             print("Exiting...")
             break
         else:
@@ -192,7 +221,7 @@ def main():
             continue
 
 
-def sync_with_server(client, request):
+def synchronization_response(client, request):
     print("\nClient sending request:", request)
     client.send_multipart([client.identity, json.dumps(request).encode()])
     client.setsockopt(zmq.RCVTIMEO, 5000)  # Timeout after 5 seconds
@@ -200,7 +229,6 @@ def sync_with_server(client, request):
     try:
         print("\nWaiting for server response...")
         response_parts = client.recv_multipart()
-        print(response_parts[0])
 
         if response_parts:
             response_raw = response_parts[0]
@@ -218,6 +246,59 @@ def sync_with_server(client, request):
         print("\nSync failed: Server timeout.")
     except Exception as e:
         print(f"Sync failed: {e}")
+
+
+def polling_and_sync(client, manager, client_id):
+
+    print("Starting polling and synchronization every 10 seconds...")
+    while True:
+        try:
+            unsynced_lists = manager.get_unsynced_lists()
+            unsynced_items = manager.get_unsynced_items()
+
+            for list in unsynced_lists:
+                request = {"action": "polling_list", "list": list, "client_id": client_id}
+                synchronize_server(client, request, manager)
+
+            for item in unsynced_items:
+                request = {"action": "polling_item", "item": item, "client_id": client_id}
+                synchronize_server(client, request, manager)
+
+            #if not unsynced_lists and not unsynced_items:
+                #print("\nNo changed data founded to be synchronized.")
+        except Exception as e:
+            print(f"Error during synchronization: {e}")
+
+        # Poll every 10 seconds
+        #print("Polling and synchronization cycle complete. Waiting for 20 seconds...")
+        time.sleep(10)
+    
+
+def synchronize_server(client, request, manager):
+    print("\nClient sending request:", request)
+    client.send_multipart([client.identity, json.dumps(request).encode()])
+    client.setsockopt(zmq.RCVTIMEO, 5000)
+
+    try:
+        response_parts = client.recv_multipart()
+        response = json.loads(response_parts[0].decode())
+
+        if response.get("status") == "success":
+            action = response.get("action")
+            if action == "sync_list":
+                manager.list_is_sync(response.get("list_url"))
+            elif action == "sync_item":
+                manager.item_is_sync(response.get("name"), response.get("list_url"))
+            print(f"Successfully synchronized: {action}")
+        else:
+            print(f"Error from server: {response.get('message')}")
+
+    except zmq.Again:
+        print("Sync failed: Server timeout.")
+    except Exception as e:
+        print(f"Sync failed: {e}")
+
+
 
 def generate_client_identity(client_id):
     return hashlib.sha256(client_id.encode('utf-8')).hexdigest()

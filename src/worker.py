@@ -85,6 +85,32 @@ def main(worker_id):
             except Exception as e:
                 response = {"status": "error", "message": str(e)}
 
+        elif action == "polling_list":
+            try:
+                list_details = request.get("list", {})
+                manager.save_list(
+                    list_details["url"],
+                    list_details["name"],
+                    list_details["creator"],
+                    client_id
+                )
+                response = {"status": "success", "action": "sync_list", "list_url": list_details["url"]}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+
+        elif action == "polling_item":
+            try:
+                item_details = request.get("item", {})
+                manager.save_item(
+                    item_details["list_url"],
+                    item_details["name"],
+                    item_details["quantity"]
+                )
+                response = {"status": "success", "action": "sync_item", "name": item_details["name"], "list_url": item_details["list_url"]}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+
+
 
         else:
             response = {"status": "error", "message": "Unknown action."}
