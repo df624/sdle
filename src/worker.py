@@ -11,7 +11,7 @@ def main(worker_id):
     worker.connect("tcp://localhost:5556")
 
     
-    db_path = f"local_{worker_id}.db"
+    db_path = f"server_{worker_id}.db"
     print(f"Worker {worker_id} is using database: {db_path}")
     manager = ShoppingListManager(db_path)
 
