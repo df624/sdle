@@ -1,12 +1,11 @@
 import zmq
 from hashring import HashRing
 import json
-import random
 
 def main():
     context = zmq.Context()
 
-    # Create ROUTER socket to accept client connections
+    # Create ROUTER socket for client connections
     frontend = context.socket(zmq.ROUTER)
     frontend.bind("tcp://*:5555")
 
@@ -36,21 +35,14 @@ def main():
             client_id = client_msg[0] 
             request = client_msg[2]  
 
-            
-            #print(f"Raw request from client: {request}")
+            print("client id:", client_id)
 
-            try:
-                request_data = json.loads(request.decode())
-                #print(f"Decoded request from client {client_id.decode()}: {request_data}")
-            except json.JSONDecodeError as e:
-                print(f"Error decoding request: {e}")
-                continue
 
-            # Determine target worker using the hash ring
-            key = request_data.get("key", f"{client_id.decode()}_{random.randint(1, 10000)}")
+            key = client_id.decode()
             target_worker = ring.get_node(key)
 
-            # Forward the request to the worker
+
+            # send request to the worker
             backend.send_multipart([target_worker, client_id, request])
             print(f"Proxy sent message to worker: {[target_worker, client_id, request]}")
 

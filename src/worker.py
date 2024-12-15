@@ -5,13 +5,13 @@ from manager import ShoppingListManager
 def main(worker_id):
     context = zmq.Context()
 
-    # Connect worker on the proxy
+    # Connect worker to the proxy
     worker = context.socket(zmq.DEALER)
     worker.identity = f"worker{worker_id}".encode()
     worker.connect("tcp://localhost:5556")
 
-    # Initialize the shopping list manager with a local database
-    db_path = f"local_{worker_id}.db"
+    
+    db_path = f"server_{worker_id}.db"
     print(f"Worker {worker_id} is using database: {db_path}")
     manager = ShoppingListManager(db_path)
 
@@ -23,17 +23,15 @@ def main(worker_id):
         #print(f"Worker {worker_id} raw message: {message}")
 
         try:
-            # Ensure the message contains exactly 3 parts
             if len(message) != 2:
                 raise ValueError(f"Expected 2 parts in message, got {len(message)}")
 
             client_id, request_raw = message
-            request = json.loads(request_raw.decode())  # Decode the JSON payload
+            request = json.loads(request_raw.decode())  
             print(f"Worker {worker_id} received request: {request}")
 
         except ValueError as e:
             print(f"Worker {worker_id} failed to decode message: {e}")
-            # Respond with an error to the client
             if len(message) > 1:
                 client_id = message[1]
             else:
@@ -55,14 +53,39 @@ def main(worker_id):
                 response = {"status": "success", "lists": lists}
             except Exception as e:
                 response = {"status": "error", "message": str(e)}
-        elif action == "create_list":
-            name = request.get("name")
-            creator = request.get("creator")
+        elif action == "sync_list":
             try:
-                new_list = manager.create_list(name, creator)
-                response = {"status": "success", "list": new_list}
+                list_details = request.get("list", {})
+                url = list_details.get("url")
+                name = list_details.get("name")
+                creator = list_details.get("creator")
+                client_id_list = request.get("client_id")
+                manager.save_list(url, name, creator, client_id_list)
+                response = {"status": "success", "message": "List synchronized successfully."}
             except Exception as e:
                 response = {"status": "error", "message": str(e)}
+        
+        elif action == "view_items":
+            list_url = request.get("list_url")
+            try:
+                items = manager.view_items_in_list(list_url)
+                response = {"status": "success", "items": items}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+
+        elif action == "sync_item":
+            try:
+                item_details = request.get("item", {})
+                list_url = item_details.get("list_url")
+                name = item_details.get("name")
+                quantity = item_details.get("quantity")
+
+                manager.save_item(list_url, name, quantity)
+                response = {"status": "success", "message": "Item synchronized successfully."}
+            except Exception as e:
+                response = {"status": "error", "message": str(e)}
+
+
         else:
             response = {"status": "error", "message": "Unknown action."}
 
