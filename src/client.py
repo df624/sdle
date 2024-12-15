@@ -1,9 +1,8 @@
 import zmq
 import json
-import random
 import os
 import hashlib
-from manager_local import ShoppingListManagerLocal
+from manager import ShoppingListManager
 
 def main():
 
@@ -22,8 +21,8 @@ def main():
     else:
         print(f"Creating a new shopping list database for {client_id}...")
 
-    # Initialize local database and manager
-    manager = ShoppingListManagerLocal(db_path)
+    # Initialize local database
+    manager = ShoppingListManager(db_path)
 
     # Initialize ZeroMQ client for server communication
     context = zmq.Context()
@@ -37,13 +36,13 @@ def main():
     while True:
         print("\n--- Shopping List Client ---")
         print("1. View local shopping lists")
-        print("2. Create a new shopping list (local and then synchronized in server-side)")
-        print("3. Add item to a list (local and then synchronized in server-side)")
-        print("4. View items in a local list")
-        print("5. Delete a list (local and then synchronized in server-side)")
-        print("6. View shopping lists synchronized in server")
+        print("2. View shopping lists synchronized in server")
+        print("3. Create a new shopping list (local and then synchronized in server-side)")
+        print("4. Delete locally a shopping list")
+        print("5. Add item to a shopping list (local and then synchronized in server-side)")
+        print("6. View items in a local shopping list")
         print("7. View items in shopping lists synchronized in server")
-        print("9. Exit")
+        print("8. Exit")
 
         choice = input("Choose an option: ")
         if choice == "1":
@@ -59,68 +58,7 @@ def main():
             except Exception as e:
                 print(f"Error viewing lists: {e}")
 
-        elif choice == "2":
-            name = input("Enter the name of the new list: ")
-            creator = input("Enter the creator's name: ")
-            try:
-                new_list = manager.create_list(name, creator, client_id)
-                print(f"\nNew list created locally: {new_list}")
-
-                # Sync to server
-                request = {"action": "sync_list", "list": new_list}
-                sync_with_server(client, request)
-
-                # Mark the list as synced locally after successful sync
-                manager.mark_as_synced(list_url=new_list["url"])
-            except Exception as e:
-                print(f"Error creating list: {e}")
-
-        elif choice == "3":
-            list_url = input("Enter the list URL: ")
-            item_name = input("Enter item name: ")
-            quantity = int(input("Enter quantity: "))
-            try:
-                manager.add_item(list_url, item_name, quantity, client_id)
-                print(f"Item '{item_name}' added locally to your list '{list_url}'.")
-
-                # Send the item to the server for synchronization
-                request = {
-                    "action": "sync_item",
-                    "item": {
-                        "list_url": list_url,
-                        "name": item_name,
-                        "quantity": quantity,
-                    },
-                }
-                sync_with_server(client, request)
-
-                # Mark the item as synced locally after successful sync
-                manager.mark_as_synced(list_url, item_name)
-            except Exception as e:
-                print(f"Error adding item: {e}")
-
-        elif choice == "4":  
-            list_url = input("Enter the list URL: ")
-            try:
-                print(f"\nItems in your list with URL {list_url}:")
-                manager.view_items_in_list(list_url, client_id)
-            except Exception as e:
-                print(f"Error viewing items: {e}")
-
-        elif choice == "5":
-            list_url = input("Enter the URL of the list to delete: ")
-            request = {"action": "delete_list", "list_url": list_url}
-            try:
-                manager.delete_list(list_url)
-                print(f"Your list with URL '{list_url}' deleted locally.")
-
-                # Sync with server
-                request = {"action": "delete_list", "list_url": list_url}
-                sync_with_server(client, request, manager, list_url)
-            except Exception as e:
-                print(f"Error deleting list: {e}")
-
-        elif choice == "6":  
+        elif choice == "2":  
             print("\Retrieving shopping lists from the server...")
 
             try:
@@ -159,9 +97,61 @@ def main():
                 print(f"Error retrieving lists from server: {e}")
 
 
+        elif choice == "3":
+            name = input("Enter the name of the new list: ")
+            creator = input("Enter the creator's name of the new list: ")
+            try:
+                new_list = manager.create_list(name, creator, client_id)
+                print(f"\nNew list created locally: {new_list}")
+
+                # Sync to server
+                request = {"action": "sync_list", "list": new_list, "client_id": client_id}
+                sync_with_server(client, request)
+
+            except Exception as e:
+                print(f"Error creating list: {e}")
+
+        elif choice == "4":
+            list_url = input("Enter the URL of the shopping list to delete: ")
+            try:
+                manager.delete_list(list_url, client_id)
+                print(f"Your list with URL '{list_url}' deleted locally.")
+
+            except Exception as e:
+                print(f"Error deleting list: {e}")
+
+        elif choice == "5":
+            list_url = input("Enter the shopping list URL: ")
+            item_name = input("Enter item name: ")
+            quantity = int(input("Enter quantity: "))
+            try:
+                manager.add_item(list_url, item_name, quantity, client_id)
+                print(f"Item '{item_name}' added locally to your list '{list_url}'.")
+
+                # Send the item to the server for synchronization
+                request = {
+                    "action": "sync_item",
+                    "item": {
+                        "list_url": list_url,
+                        "name": item_name,
+                        "quantity": quantity,
+                    },
+                }
+                sync_with_server(client, request)
+            except Exception as e:
+                print(f"Error adding item: {e}")
+
+        elif choice == "6":  
+            list_url = input("Enter the shopping list URL: ")
+            try:
+                print(f"\nItems in your list with URL {list_url}:")
+                manager.view_items_in_list_local(list_url, client_id)
+            except Exception as e:
+                print(f"Error viewing items: {e}")
+
         elif choice == "7":
-            list_url = input("Enter the list URL: ")
-            print(f"\Retrieving items for list {list_url} from the server...")
+            list_url = input("Enter the shopping list URL: ")
+            print(f"\Retrieving items for shopping list {list_url} from the server...")
 
             try:
                 # Send request to server to get items
@@ -170,7 +160,6 @@ def main():
                 client.send_multipart([client.identity, json.dumps(request).encode()])
                 client.setsockopt(zmq.RCVTIMEO, 5000)  # Timeout after 10 seconds
 
-                # Wait for response
                 print("\nClient waiting for response...")
                 response_parts = client.recv_multipart()
                 
@@ -179,10 +168,9 @@ def main():
                     response = json.loads(response_raw.decode())
 
                     if response.get("status") == "success":
-                        items = response.get("items", [])
-                        if items:
+                        if response["items"]:
                             print(f"\nItems in the list '{list_url}':")
-                            for item in items:
+                            for item in response["items"]:
                                 status = "Bought" if item["bought"] else "Not Bought"
                                 print(f"- Name: {item['name']}, Quantity: {item['quantity']}, Status: {status}")
                         else:
@@ -196,7 +184,7 @@ def main():
             except Exception as e:
                 print(f"Error retrieving items from server: {e}")
     
-        elif choice == "9":
+        elif choice == "8":
             print("Exiting...")
             break
         else:
@@ -206,13 +194,13 @@ def main():
 
 def sync_with_server(client, request):
     print("\nClient sending request:", request)
-    """Send a request to the server and handle the response."""
     client.send_multipart([client.identity, json.dumps(request).encode()])
     client.setsockopt(zmq.RCVTIMEO, 5000)  # Timeout after 5 seconds
 
     try:
         print("\nWaiting for server response...")
         response_parts = client.recv_multipart()
+        print(response_parts[0])
 
         if response_parts:
             response_raw = response_parts[0]
@@ -221,7 +209,7 @@ def sync_with_server(client, request):
             print("\nClient received response:", response)
 
             if response.get("status") == "success":
-                print("\nSync successful!")
+                print("\nSynchronization successful!")
             else:
                 print(f"\nError from server: {response.get('message')}")
         else:
