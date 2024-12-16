@@ -33,17 +33,3 @@ class HashRing:
             if hash_key <= ring_key:
                 return self.ring[ring_key]
         return self.ring[self.sorted_keys[0]]
-        	
-    #return multiple replicas for a given key
-    def get_nodes(self, key, count=3):
-        """Return `count` nodes responsible for a given key."""
-        hash_key = self._hash(key)
-        result = []
-        for ring_key in self.sorted_keys:
-            if hash_key <= ring_key:
-                result.append(self.ring[ring_key])
-                if len(result) == count:
-                    break
-        if len(result) < count:
-            result.extend(self.ring[self.sorted_keys[i]] for i in range(count - len(result)))
-        return result

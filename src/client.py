@@ -1,10 +1,10 @@
 import zmq
 import json
-import os
 import hashlib
 import threading
 import time
 from manager import ShoppingListManager
+from pathlib import Path
 
 def main():
 
@@ -14,19 +14,16 @@ def main():
         print("Client ID cannot be empty. Please enter a valid ID.")
         return
     
-    # path to local client database
     db_path = f"{client_id}_client_local.db"
 
-    # Check if the database already exists
-    if os.path.exists(db_path):
+    if Path(db_path).exists():
         print(f"Welcome back, {client_id}! Loading your shopping list database...")
     else:
         print(f"Creating a new shopping list database for {client_id}...")
 
-    # Initialize local database
+    # Initialize database manager for shopping lists
     manager = ShoppingListManager(db_path)
 
-    # Initialize ZeroMQ client for server communication
     context = zmq.Context()
 
     client_identity = generate_client_identity(client_id)
@@ -35,7 +32,7 @@ def main():
     print(f"Client identity: {client.identity.decode()}")
     client.connect("tcp://localhost:5555")
 
-    # Start polling in a separate thread
+    # Start polling
     threading.Thread(target=polling_and_sync, args=(client, manager, client_id), daemon=True).start()
 
     while True:
@@ -111,7 +108,6 @@ def main():
                 new_list = manager.create_list(name, creator, client_id)
                 print(f"\nNew list created locally: {new_list}")
 
-                # Sync to server
                 request = {"action": "sync_list", "list": new_list, "client_id": client_id}
                 synchronization_response(client, request)
 
@@ -132,20 +128,16 @@ def main():
             list_url = input("Enter the shopping list URL: ")
             item_name = input("Enter item name: ")
             quantity = int(input("Enter quantity: "))
-            #tag = f"{time.time()}_{client_id}"
-
             try:
                 manager.add_item(list_url, item_name, quantity, client_id)
                 print(f"Item '{item_name}' added locally to your list '{list_url}'.")
 
-                # Send the item to the server for synchronization
                 request = {
                     "action": "sync_item",
                     "item": {
                         "list_url": list_url,
                         "name": item_name,
                         "quantity": quantity,
-                        #"tag": tag,
                     },
                 }
                 synchronization_response(client, request)
@@ -167,11 +159,10 @@ def main():
             print(f"\Retrieving items for shopping list {list_url} from the server...")
 
             try:
-                # Send request to server to get items
                 request = {"action": "view_items", "list_url": list_url}
                 print("\nClient sending request:", request)
                 client.send_multipart([client.identity, json.dumps(request).encode()])
-                client.setsockopt(zmq.RCVTIMEO, 5000)  # Timeout after 10 seconds
+                client.setsockopt(zmq.RCVTIMEO, 5000)  
 
                 print("\nClient waiting for response...")
                 response_parts = client.recv_multipart()
@@ -267,13 +258,9 @@ def polling_and_sync(client, manager, client_id):
                 request = {"action": "polling_item", "item": item, "client_id": client_id}
                 synchronize_server(client, request, manager)
 
-            #if not unsynced_lists and not unsynced_items:
-                #print("\nNo changed data founded to be synchronized.")
         except Exception as e:
             print(f"Error during synchronization: {e}")
 
-        # Poll every 10 seconds
-        #print("Polling and synchronization cycle complete. Waiting for 20 seconds...")
         time.sleep(10)
     
 
