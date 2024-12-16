@@ -214,9 +214,8 @@ class ShoppingListManager:
             if cursor.fetchone()[0] == 0:
                 raise ValueError(f"No list found with URL: {list_url}")
 
-            self.db.execute("UPDATE lists SET active = 0 WHERE url = ?", (list_url,))
-
-            self.db.execute("UPDATE items SET deleted = 1 WHERE list_url = ?", (list_url,))
+            self.db.execute("UPDATE lists SET active = 0 WHERE url = ?", (list_url))
+            self.db.execute("UPDATE items SET deleted = 1 WHERE list_url = ?", (list_url))
             self.db.commit()
         return {"url": list_url}
 
