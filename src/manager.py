@@ -171,6 +171,14 @@ class ShoppingListManager:
             """, (name, list_url, quantity))
             self.db.commit()
 
+    
+    def remove_item(self, list_url, name):
+        with self.lock:
+            self.db.execute("""
+                UPDATE items SET deleted = 1
+                WHERE name = ? AND list_url = ?
+            """, (name, list_url))
+            self.db.commit()
 
     def view_items_in_list(self, list_url):
         #View all items in a synchronized shopping list
@@ -282,6 +290,5 @@ class ShoppingListManager:
         
         result = [{"url": lst[0], "name": lst[1], "creator": lst[2]} for lst in lists]
         
-        return result
-
+        return result    
 

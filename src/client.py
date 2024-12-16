@@ -132,6 +132,8 @@ def main():
             list_url = input("Enter the shopping list URL: ")
             item_name = input("Enter item name: ")
             quantity = int(input("Enter quantity: "))
+            #tag = f"{time.time()}_{client_id}"
+
             try:
                 manager.add_item(list_url, item_name, quantity, client_id)
                 print(f"Item '{item_name}' added locally to your list '{list_url}'.")
@@ -143,6 +145,7 @@ def main():
                         "list_url": list_url,
                         "name": item_name,
                         "quantity": quantity,
+                        #"tag": tag,
                     },
                 }
                 synchronization_response(client, request)
